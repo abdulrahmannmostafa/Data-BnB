@@ -202,6 +202,8 @@ print("\n[Fix 7] Price_vs_city_median SKIPPED (target leakage — see comment)."
 # ──────────────────────────────────────────────
 print("\n[Fix 8] Encoding categoricals...")
 
+import re
+
 # FIX 5: Top-20 Amenities One-Hot Encoding
 # As discovered in EDA, Top amenities appear in the vast majority of listings.
 if "Parsed Amenities" in X_train.columns:
@@ -213,8 +215,11 @@ if "Parsed Amenities" in X_train.columns:
     top_20_amenities = [a[0] for a in amenity_counts.most_common(20) if a[0]]
     
     for amenity in top_20_amenities:
-        col_name = f"Amenity_{amenity}"
-        # We use regex=False because amenities might contain regex characters like parentheses
+        # Sanitize column name to avoid LightGBM errors with special JSON characters
+        safe_amenity = re.sub(r'[^A-Za-z0-9_]+', '_', amenity)
+        col_name = f"Amenity_{safe_amenity}"
+        
+        # We use regex=False because original amenities might contain regex characters like parentheses
         X_train[col_name] = X_train["Parsed Amenities"].str.contains(amenity, regex=False, na=False).astype(int)
         X_test[col_name]  = X_test["Parsed Amenities"].str.contains(amenity, regex=False, na=False).astype(int)
     
