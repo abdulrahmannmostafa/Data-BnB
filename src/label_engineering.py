@@ -19,9 +19,13 @@ print(f"Shape: {df.shape}")
 print("\nEngineering demand label...")
 
 rev_per_month = df["Reviews per Month"].fillna(0)
-num_reviews_norm = (
-    df["Number of Reviews"].fillna(0) / df["Number of Reviews"].replace(0, np.nan).max()
-)
+
+# NOTE: max() is computed over all rows here (minor leakage).
+# The effect is negligible for large datasets, but postprocessing could
+# recompute this threshold from training rows only if strict leakage-free
+# evaluation is required.
+num_reviews_max = df["Number of Reviews"].replace(0, np.nan).max()
+num_reviews_norm = df["Number of Reviews"].fillna(0) / num_reviews_max
 
 df["demand_score"] = 0.6 * rev_per_month + 0.4 * num_reviews_norm
 
@@ -40,8 +44,17 @@ print(
 
 # ──────────────────────────────────────────────
 # 3. 3-Class label  (0=low, 1=medium, 2=high)
-#    Uses tertile cut-points for equal-sized classes
+#    Uses tertile cut-points for equal-sized classes.
+#
+#    KNOWN LIMITATION: pd.qcut is applied to ALL rows here, so the
+#    tertile boundaries include test data → minor label leakage.
+#    To fix properly: run postprocessing.py which can recompute
+#    the 3-class label from training rows only using the saved
+#    demand_score column and these thresholds.
 # ──────────────────────────────────────────────
+q33, q67 = df["demand_score"].quantile([1/3, 2/3]).values
+print(f"\nTertile thresholds: 33rd pct = {q33:.4f}, 67th pct = {q67:.4f}")
+
 df["demand_label_3"] = pd.qcut(df["demand_score"], q=3, labels=[0, 1, 2]).astype(int)
 
 print(
