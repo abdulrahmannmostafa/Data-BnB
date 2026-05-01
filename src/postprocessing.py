@@ -159,35 +159,30 @@ raw_test_cols = {c: X_test[c].copy() for c in RAW_PROFILE_COLS if c in X_test.co
 print(f"  Snapshotted {len(raw_train_cols)} columns.")
 
 # ──────────────────────────────────────────────
-# FIX 7 — City-relative price feature (train medians only)
+# FIX 7 — REMOVED: Price_vs_city_median
+#    This feature divided each listing's Price by the city median Price.
+#    Since Price IS the regression target, this constitutes target leakage
+#    for the classification task (demand_label derived separately, but the
+#    feature directly encodes the target variable's magnitude).
+#    Amenities Count + City label encoding already provide city-level signal.
 # ──────────────────────────────────────────────
-print("\n[Fix 7] City-relative price feature...")
-city_col = next(
-    (c for c in ["City", "Neighbourhood Cleansed"] if c in X_train.columns), None
-)
-
-if city_col:
-    train_city_medians = df.loc[X_train.index].groupby(city_col)["Price"].median()
-
-    X_train["Price_vs_city_median"] = (
-        df.loc[X_train.index, "Price"] / X_train[city_col].map(train_city_medians)
-    ).fillna(1.0)
-
-    global_median = df.loc[X_train.index, "Price"].median()
-    X_test["Price_vs_city_median"] = (
-        df.loc[X_test.index, "Price"]
-        / X_test[city_col].map(train_city_medians).fillna(global_median)
-    ).fillna(1.0)
-
-    joblib.dump(train_city_medians, os.path.join(ENCODER_DIR, "train_city_medians.pkl"))
-    print(f"  Created using '{city_col}'.")
-else:
-    print("  No city column found — skipped.")
+print("\n[Fix 7] Price_vs_city_median SKIPPED (target leakage — see comment).")
 
 # ──────────────────────────────────────────────
 # FIX 8 — Encode categoricals AFTER split
 # ──────────────────────────────────────────────
 print("\n[Fix 8] Encoding categoricals...")
+
+# FIX 5: Drop Parsed Amenities entirely.
+# It is a pipe-separated multi-value set (e.g. "Wifi|Kitchen|Heating").
+# Label-encoding it assigns arbitrary ordinal integers to unique
+# combination strings, which is semantically meaningless for models.
+# Amenities Count already captures the numerical amenity signal.
+if "Parsed Amenities" in X_train.columns:
+    X_train.drop(columns=["Parsed Amenities"], inplace=True)
+    X_test.drop(columns=["Parsed Amenities"],  inplace=True)
+    print("  Dropped 'Parsed Amenities' (multi-value set; use Amenities Count instead).")
+
 categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
 
 for col in categorical_cols:
@@ -279,23 +274,32 @@ joblib.dump(scaler, os.path.join(ENCODER_DIR, "standard_scaler.pkl"))
 # ──────────────────────────────────────────────
 print("\n[Fix 12] Saving splits...")
 
+# Save original df-aligned indices BEFORE reset_index — needed for df.loc[] lookups below.
+train_orig_idx = y_reg_train.index
+test_orig_idx  = y_reg_test.index
+
+# Reset index so that integer-based .values alignment is correct after
+# pd.concat (get_dummies) operations that may have shuffled the positional index.
+X_train = X_train.reset_index(drop=True)
+X_test  = X_test.reset_index(drop=True)
+
 train_df = X_train.copy()
 train_df[REGRESSION_TARGET] = y_reg_train.values
 train_df[CLASSIFICATION_TARGET_BIN] = y_cls_train.values
 train_df[CLASSIFICATION_TARGET_MULTI] = y_cls3_train.values
-train_df["Price_original"] = df.loc[X_train.index, "Price"].values
+train_df["Price_original"] = df.loc[train_orig_idx, "Price"].values
 
 for col, series in raw_train_cols.items():
-    train_df[f"{col}_raw"] = series.values
+    train_df[f"{col}_raw"] = series.reset_index(drop=True).values
 
 test_df = X_test.copy()
 test_df[REGRESSION_TARGET] = y_reg_test.values
 test_df[CLASSIFICATION_TARGET_BIN] = y_cls_test.values
 test_df[CLASSIFICATION_TARGET_MULTI] = y_cls3_test.values
-test_df["Price_original"] = df.loc[X_test.index, "Price"].values
+test_df["Price_original"] = df.loc[test_orig_idx, "Price"].values
 
 for col, series in raw_test_cols.items():
-    test_df[f"{col}_raw"] = series.values
+    test_df[f"{col}_raw"] = series.reset_index(drop=True).values
 
 train_df.to_csv(os.path.join(OUTPUT_DIR, "train.csv"), index=False)
 test_df.to_csv(os.path.join(OUTPUT_DIR, "test.csv"), index=False)
