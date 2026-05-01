@@ -6,6 +6,7 @@ import os
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from statsmodels.stats.outliers_influence import variance_inflation_factor
+from collections import Counter
 
 # ──────────────────────────────────────────────
 # CONFIG
@@ -159,6 +160,34 @@ raw_test_cols = {c: X_test[c].copy() for c in RAW_PROFILE_COLS if c in X_test.co
 print(f"  Snapshotted {len(raw_train_cols)} columns.")
 
 # ──────────────────────────────────────────────
+# FIX 6c — Outlier Capping (Train-only percentiles)
+#    As per EDA: Minimum Nights, Maximum Nights, Extra People,
+#    Cleaning Fee, Security Deposit, and Price all have extreme outliers.
+# ──────────────────────────────────────────────
+print("\n[Fix 6c] Capping extreme outliers (1st-99th percentile of train)...")
+outlier_cols = [
+    "Minimum Nights",
+    "Maximum Nights",
+    "Extra People",
+    "Cleaning Fee",
+    "Security Deposit",
+    "Host Listings Count"
+]
+for col in outlier_cols:
+    if col in X_train.columns:
+        q01 = X_train[col].quantile(0.01)
+        q99 = X_train[col].quantile(0.99)
+        X_train[col] = X_train[col].clip(lower=q01, upper=q99)
+        X_test[col]  = X_test[col].clip(lower=q01, upper=q99)
+
+# Cap the regression target (Price_log) based on train bounds
+q01_y = y_reg_train.quantile(0.01)
+q99_y = y_reg_train.quantile(0.99)
+y_reg_train = y_reg_train.clip(lower=q01_y, upper=q99_y)
+y_reg_test  = y_reg_test.clip(lower=q01_y, upper=q99_y)
+print("  Outliers capped.")
+
+# ──────────────────────────────────────────────
 # FIX 7 — REMOVED: Price_vs_city_median
 #    This feature divided each listing's Price by the city median Price.
 #    Since Price IS the regression target, this constitutes target leakage
@@ -173,15 +202,25 @@ print("\n[Fix 7] Price_vs_city_median SKIPPED (target leakage — see comment)."
 # ──────────────────────────────────────────────
 print("\n[Fix 8] Encoding categoricals...")
 
-# FIX 5: Drop Parsed Amenities entirely.
-# It is a pipe-separated multi-value set (e.g. "Wifi|Kitchen|Heating").
-# Label-encoding it assigns arbitrary ordinal integers to unique
-# combination strings, which is semantically meaningless for models.
-# Amenities Count already captures the numerical amenity signal.
+# FIX 5: Top-20 Amenities One-Hot Encoding
+# As discovered in EDA, Top amenities appear in the vast majority of listings.
 if "Parsed Amenities" in X_train.columns:
+    print("\n  Extracting Top-20 Amenities...")
+    amenity_counts = Counter()
+    for row in X_train["Parsed Amenities"].dropna():
+        amenity_counts.update(row.split("|"))
+    
+    top_20_amenities = [a[0] for a in amenity_counts.most_common(20) if a[0]]
+    
+    for amenity in top_20_amenities:
+        col_name = f"Amenity_{amenity}"
+        # We use regex=False because amenities might contain regex characters like parentheses
+        X_train[col_name] = X_train["Parsed Amenities"].str.contains(amenity, regex=False, na=False).astype(int)
+        X_test[col_name]  = X_test["Parsed Amenities"].str.contains(amenity, regex=False, na=False).astype(int)
+    
     X_train.drop(columns=["Parsed Amenities"], inplace=True)
     X_test.drop(columns=["Parsed Amenities"],  inplace=True)
-    print("  Dropped 'Parsed Amenities' (multi-value set; use Amenities Count instead).")
+    print(f"  Created {len(top_20_amenities)} one-hot columns for top amenities.")
 
 categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
 
