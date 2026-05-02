@@ -4,8 +4,8 @@ import numpy as np
 # ──────────────────────────────────────────────
 # CONFIG
 # ──────────────────────────────────────────────
-INPUT_PATH = "../data/airbnb-cleaned.csv"
-OUTPUT_PATH = "../data/airbnb-labeled.csv"
+INPUT_PATH = "../../data/airbnb-cleaned.csv"
+OUTPUT_PATH = "../../data/airbnb-labeled.csv"
 
 print("Loading cleaned dataset...")
 df = pd.read_csv(INPUT_PATH, low_memory=False)
@@ -52,7 +52,7 @@ print(
 #    the 3-class label from training rows only using the saved
 #    demand_score column and these thresholds.
 # ──────────────────────────────────────────────
-q33, q67 = df["demand_score"].quantile([1/3, 2/3]).values
+q33, q67 = df["demand_score"].quantile([1 / 3, 2 / 3]).values
 print(f"\nTertile thresholds: 33rd pct = {q33:.4f}, 67th pct = {q67:.4f}")
 
 df["demand_label_3"] = pd.qcut(df["demand_score"], q=3, labels=[0, 1, 2]).astype(int)
