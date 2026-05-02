@@ -4,8 +4,8 @@ import numpy as np
 # ──────────────────────────────────────────────
 # 1. Load raw data
 # ──────────────────────────────────────────────
-INPUT_PATH = r"../data/airbnb-listings.csv"
-OUTPUT_PATH = r"../data/airbnb-cleaned.csv"
+INPUT_PATH = r"../../data/airbnb-listings.csv"
+OUTPUT_PATH = r"../../data/airbnb-cleaned.csv"
 
 print("Loading dataset...")
 df = pd.read_csv(INPUT_PATH, sep=";", low_memory=False)
