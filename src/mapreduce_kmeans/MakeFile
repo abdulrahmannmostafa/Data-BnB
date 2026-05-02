@@ -1,0 +1,8 @@
+# 1. Go to the mapreduce folder
+cd /mnt/c/Users/Administrator/Documents/GitHub/Data-BnB/mapreduce_kmeans
+
+# 2. Make scripts executable
+chmod +x setup_and_run.sh run_hadoop.sh
+
+# 3. Run everything
+./setup_and_run.sh
