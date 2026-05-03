@@ -9,9 +9,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 
-# ──────────────────────────────────────────────
-# CONFIG
-# ──────────────────────────────────────────────
 INPUT_PATH = "../../data/airbnb-labeled.csv"
 OUTPUT_DIR = "../../data/splits/"
 ENCODER_DIR = "../../encoders/"
@@ -47,9 +44,6 @@ for col in [CLASSIFICATION_TARGET_BIN, CLASSIFICATION_TARGET_MULTI, "demand_scor
     assert col in df.columns, f"Missing required column: '{col}'"
 
 
-# ══════════════════════════════════════════════
-# STEP 1 — Deduplicate on ID
-# ══════════════════════════════════════════════
 print("\n[Step 1] Deduplication...")
 if "ID" in df.columns:
     before = len(df)
@@ -59,10 +53,6 @@ else:
     print("  'ID' column not found — skipped.")
 
 
-# ══════════════════════════════════════════════
-# STEP 2 — Parse currency columns (string → float)
-# Only runs if the column is still object-typed.
-# ══════════════════════════════════════════════
 print("\n[Step 2] Parsing currency columns...")
 currency_cols = ["Price", "Cleaning Fee", "Security Deposit", "Extra People"]
 
@@ -80,10 +70,6 @@ for col in currency_cols:
     else:
         print(f"  '{col}' already numeric or not found — skipped.")
 
-
-# ══════════════════════════════════════════════
-# STEP 3 — Parse Host Response Rate
-# ══════════════════════════════════════════════
 print("\n[Step 3] Parsing Host Response Rate...")
 if "Host Response Rate" in df.columns and df["Host Response Rate"].dtype == object:
     df["Host Response Rate"] = (
@@ -99,11 +85,6 @@ else:
     print("  Already numeric or not found — skipped.")
 
 
-# ══════════════════════════════════════════════
-# STEP 4 — Filter & log-transform Price
-#           Reset index IMMEDIATELY after filter so
-#           all downstream .loc[] lookups stay valid.
-# ══════════════════════════════════════════════
 print("\n[Step 4] Filtering zero/null Price and log-transforming...")
 before = len(df)
 df = df[df["Price"].notna() & (df["Price"] > 0)].reset_index(drop=True)
@@ -113,15 +94,6 @@ df["Price_original"] = df["Price"].copy()  # ← store now, before any split
 print(f"  Price_log range: [{df['Price_log'].min():.3f}, {df['Price_log'].max():.3f}]")
 
 
-# ══════════════════════════════════════════════
-# STEP 5 — Define feature matrix & targets,
-#           then split BEFORE any statistics-based transforms.
-#
-#           Leaky columns removed:
-#           - demand_score, demand_label*, Price, Price_log → targets / derived from target
-#           - Number of Reviews, Reviews per Month, Availability* → used to build demand_label
-#           - Price_original → raw target, must not be a feature
-# ══════════════════════════════════════════════
 print("\n[Step 5] Defining features and splitting...")
 
 # Columns that must never appear as features
@@ -167,20 +139,12 @@ print(f"  3-class label — Train: {y_cls3_train.value_counts().sort_index().to_
 print(f"  3-class label — Test : {y_cls3_test.value_counts().sort_index().to_dict()}")
 
 
-# ══════════════════════════════════════════════
-# STEP 6 — Snapshot raw (unscaled) profile columns
-#           BEFORE any numeric transforms.
-# ══════════════════════════════════════════════
 print("\n[Step 6] Snapshotting raw profile columns...")
 raw_train = {c: X_train[c].copy() for c in RAW_PROFILE_COLS if c in X_train.columns}
 raw_test = {c: X_test[c].copy() for c in RAW_PROFILE_COLS if c in X_test.columns}
 print(f"  Snapshotted {len(raw_train)} columns.")
 
 
-# ══════════════════════════════════════════════
-# STEP 7 — Outlier capping (train quantiles → applied to both)
-#           Including the regression target.
-# ══════════════════════════════════════════════
 print("\n[Step 7] Capping outliers using train-only quantiles...")
 outlier_cols = [
     "Minimum Nights",
@@ -211,11 +175,6 @@ joblib.dump(clip_bounds, os.path.join(ENCODER_DIR, "clip_bounds.pkl"))
 print(f"  Saved clip bounds → {ENCODER_DIR}clip_bounds.pkl")
 
 
-# ══════════════════════════════════════════════
-# STEP 8 — FIX: Review Scores Composite AFTER split
-#           Computed separately on train and test using
-#           train-derived sub-score means to fill NaNs.
-# ══════════════════════════════════════════════
 print("\n[Step 8] Building Review Scores Composite (post-split)...")
 review_sub_cols = [
     "Review Scores Accuracy",
@@ -236,13 +195,6 @@ else:
     print("  No review sub-score columns found.")
 
 
-# ══════════════════════════════════════════════
-# STEP 9 — FIX: Re-derive demand_label_3 from train quantiles only
-#           The original label_engineering.py used global tertiles
-#           (computed over all rows) — this leaks test distribution
-#           into the 3-class labels. We recompute here using only
-#           the training rows' demand_score to set the boundaries.
-# ══════════════════════════════════════════════
 print("\n[Step 9a] Re-deriving demand_label_3 from train-only tertiles...")
 if "demand_score" in df.columns:
     train_demand = df.loc[X_train.index, "demand_score"]
@@ -292,15 +244,8 @@ print(f"  Binary — Train: {y_cls_train.value_counts().to_dict()}")
 print(f"  Binary — Test : {y_cls_test.value_counts().to_dict()}")
 
 
-# ══════════════════════════════════════════════
-# STEP 10 — Encode categoricals (fit on train only)
-#            - High cardinality (>15 unique): LabelEncoder
-#            - Low cardinality (≤15 unique): one-hot
-#            - Amenities: top-20 from train, one-hot
-# ══════════════════════════════════════════════
 print("\n[Step 10] Encoding categoricals...")
 
-# 10a. Amenity one-hot from train-derived top-20
 if "Parsed Amenities" in X_train.columns:
     print("  Extracting Top-20 Amenities from train...")
     amenity_counts = Counter()
@@ -328,7 +273,6 @@ if "Parsed Amenities" in X_train.columns:
     X_test.drop(columns=["Parsed Amenities"], inplace=True)
     print(f"  Created {len(top_20_amenities)} amenity one-hot columns.")
 
-# 10b. Remaining categorical columns
 categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
 
 for col in categorical_cols:
@@ -371,14 +315,9 @@ joblib.dump(X_train.columns.tolist(), os.path.join(ENCODER_DIR, "feature_columns
 print(f"  Saved feature column list ({len(X_train.columns)} features).")
 
 
-# ══════════════════════════════════════════════
-# STEP 11 — Train-only median imputation
-#            FIX: only apply to genuinely continuous columns.
-#            Label-encoded and binary columns are excluded.
-# ══════════════════════════════════════════════
 print("\n[Step 11] Median imputation (train-only, continuous cols only)...")
 
-# Identify binary columns (one-hot / flag columns) — exclude from median fill
+# Identify binary columns (one-hot / flag columns), exclude from median fill
 binary_cols = [
     c
     for c in X_train.select_dtypes(include=[np.number]).columns
@@ -406,9 +345,6 @@ print(f"  Imputed {len(continuous_cols)} continuous cols with median.")
 print(f"  Imputed {len(binary_cols)} binary cols with mode.")
 
 
-# ══════════════════════════════════════════════
-# STEP 12 — VIF check (informational, does not alter data)
-# ══════════════════════════════════════════════
 print("\n[Step 12] VIF check...")
 vif_candidates = [
     c
@@ -442,10 +378,6 @@ if len(vif_candidates) >= 2:
         )
 
 
-# ══════════════════════════════════════════════
-# STEP 13 — StandardScaler (fit on train only)
-#            FIX: exclude binary/one-hot columns from scaling.
-# ══════════════════════════════════════════════
 print("\n[Step 13] Scaling continuous features...")
 
 # Re-identify binary cols after all encoding steps
@@ -470,11 +402,6 @@ print(f"  Scaled {len(scale_cols)} continuous columns.")
 print(f"  Left {len(binary_cols_final)} binary columns unscaled.")
 
 
-# ══════════════════════════════════════════════
-# STEP 14 — Save splits
-#            All targets + raw unscaled profile cols attached.
-#            Price_original extracted in Step 4 before any split.
-# ══════════════════════════════════════════════
 print("\n[Step 14] Saving train/test splits...")
 
 # Reset index so positional alignment is safe for .values assignment
@@ -507,9 +434,6 @@ train_df.to_csv(os.path.join(OUTPUT_DIR, "train.csv"), index=False)
 test_df.to_csv(os.path.join(OUTPUT_DIR, "test.csv"), index=False)
 
 
-# ══════════════════════════════════════════════
-# SUMMARY
-# ══════════════════════════════════════════════
 print("\n" + "=" * 60)
 print("POSTPROCESSING COMPLETE — LEAKAGE-FREE")
 print("=" * 60)
